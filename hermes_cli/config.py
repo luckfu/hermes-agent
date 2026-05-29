@@ -2650,6 +2650,14 @@ def _normalize_custom_provider_entry(
     if isinstance(rate_limit_delay, (int, float)) and rate_limit_delay >= 0:
         normalized["rate_limit_delay"] = rate_limit_delay
 
+    headers = entry.get("headers")
+    if isinstance(headers, dict) and headers:
+        normalized["headers"] = {
+            str(k).strip(): str(v)
+            for k, v in headers.items()
+            if str(k).strip() and v is not None
+        }
+
     return normalized
 
 
@@ -2810,7 +2818,7 @@ _KNOWN_ROOT_KEYS = {
 # Valid fields inside a custom_providers list entry
 _VALID_CUSTOM_PROVIDER_FIELDS = {
     "name", "base_url", "api_key", "api_mode", "model", "models",
-    "context_length", "rate_limit_delay",
+    "context_length", "rate_limit_delay", "headers",
     # key_env is read at runtime by runtime_provider.py and auxiliary_client.py
     # — include it here so the set accurately describes the supported schema.
     "key_env",

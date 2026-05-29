@@ -965,6 +965,7 @@ class AIAgent:
         iteration_budget: "IterationBudget" = None,
         fallback_model: Dict[str, Any] = None,
         credential_pool=None,
+        default_headers: Dict[str, Any] = None,
         checkpoints_enabled: bool = False,
         checkpoint_max_snapshots: int = 50,
         pass_session_id: bool = False,
@@ -1034,6 +1035,7 @@ class AIAgent:
         self._chat_type = chat_type
         self._thread_id = thread_id
         self._gateway_session_key = gateway_session_key  # Stable per-chat key (e.g. agent:main:telegram:dm:123)
+        self._runtime_default_headers = self._coerce_default_headers(default_headers)
         # Pluggable print function — CLI replaces this with _cprint so that
         # raw ANSI status lines are routed through prompt_toolkit's renderer
         # instead of going directly to stdout where patch_stdout's StdoutProxy
@@ -1549,6 +1551,7 @@ class AIAgent:
                         )
             
             self._client_kwargs = client_kwargs  # stored for rebuilding after interrupt
+            self._merge_runtime_default_headers_into(client_kwargs)
 
             # Enable fine-grained tool streaming for Claude on OpenRouter.
             # Without this, Anthropic buffers the entire tool call and goes
@@ -5574,6 +5577,7 @@ class AIAgent:
         # copy locks the contract so future transport/keepalive work can't reintroduce
         # the same class of bug.
         client_kwargs = dict(client_kwargs)
+        self._merge_runtime_default_headers_into(client_kwargs)
         _validate_proxy_env_urls()
         _validate_base_url(client_kwargs.get("base_url"))
         if self.provider == "copilot-acp" or str(client_kwargs.get("base_url", "")).startswith("acp://copilot"):
@@ -5655,6 +5659,30 @@ class AIAgent:
             self._client_log_context(),
         )
         return client
+
+    @staticmethod
+    def _coerce_default_headers(raw: Any) -> Dict[str, str]:
+        if not isinstance(raw, dict):
+            return {}
+        headers: Dict[str, str] = {}
+        for key, value in raw.items():
+            name = str(key).strip()
+            if not name or value is None:
+                continue
+            headers[name] = str(value)
+        return headers
+
+    def _merge_runtime_default_headers_into(self, client_kwargs: dict) -> None:
+        runtime_headers = getattr(self, "_runtime_default_headers", None) or {}
+        if not runtime_headers:
+            return
+        merged = {}
+        existing = client_kwargs.get("default_headers")
+        if isinstance(existing, dict):
+            merged.update(existing)
+        merged.update(runtime_headers)
+        if merged:
+            client_kwargs["default_headers"] = merged
 
     @staticmethod
     def _force_close_tcp_sockets(client: Any) -> int:
@@ -6292,6 +6320,7 @@ class AIAgent:
                 self._client_kwargs["default_headers"] = _ph_headers
             else:
                 self._client_kwargs.pop("default_headers", None)
+        self._merge_runtime_default_headers_into(self._client_kwargs)
 
     def _swap_credential(self, entry) -> None:
         runtime_key = getattr(entry, "runtime_api_key", None) or getattr(entry, "access_token", "")
@@ -7751,6 +7780,7 @@ class AIAgent:
                 # Swap OpenAI client and config in-place
                 self.api_key = fb_client.api_key
                 self.client = fb_client
+                self._runtime_default_headers = {}
                 # Preserve provider-specific headers that
                 # resolve_provider_client() may have baked into
                 # fb_client via the default_headers kwarg.  The OpenAI

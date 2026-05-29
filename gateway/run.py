@@ -586,6 +586,7 @@ def _resolve_runtime_agent_kwargs() -> dict:
         "command": runtime.get("command"),
         "args": list(runtime.get("args") or []),
         "credential_pool": runtime.get("credential_pool"),
+        "default_headers": dict(runtime.get("default_headers") or {}),
     }
 
 
@@ -622,6 +623,7 @@ def _try_resolve_fallback_provider() -> dict | None:
                     "command": runtime.get("command"),
                     "args": list(runtime.get("args") or []),
                     "credential_pool": runtime.get("credential_pool"),
+                    "default_headers": dict(runtime.get("default_headers") or {}),
                 }
             except Exception as fb_exc:
                 logger.debug("Fallback entry %s failed: %s", entry.get("provider"), fb_exc)
@@ -1581,6 +1583,7 @@ class GatewayRunner:
                 "api_key": override.get("api_key"),
                 "base_url": override.get("base_url"),
                 "api_mode": override.get("api_mode"),
+                "default_headers": dict(override.get("default_headers") or {}),
             }
             if override_runtime.get("api_key"):
                 logger.debug(
@@ -1644,6 +1647,7 @@ class GatewayRunner:
             "command": runtime_kwargs.get("command"),
             "args": list(runtime_kwargs.get("args") or []),
             "credential_pool": runtime_kwargs.get("credential_pool"),
+            "default_headers": dict(runtime_kwargs.get("default_headers") or {}),
         }
         route = {
             "model": model,
@@ -1655,6 +1659,7 @@ class GatewayRunner:
                 runtime["api_mode"],
                 runtime["command"],
                 tuple(runtime["args"]),
+                tuple(sorted((runtime.get("default_headers") or {}).items())),
             ),
         }
 

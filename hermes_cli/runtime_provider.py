@@ -176,6 +176,26 @@ def _parse_api_mode(raw: Any) -> Optional[str]:
     return None
 
 
+def _coerce_default_headers(raw: Any) -> Dict[str, str]:
+    """Return sanitized provider request headers from config."""
+    if not isinstance(raw, dict):
+        return {}
+    headers: Dict[str, str] = {}
+    for key, value in raw.items():
+        name = str(key).strip()
+        if not name or value is None:
+            continue
+        headers[name] = str(value)
+    return headers
+
+
+def _merge_default_headers(*parts: Any) -> Dict[str, str]:
+    merged: Dict[str, str] = {}
+    for part in parts:
+        merged.update(_coerce_default_headers(part))
+    return merged
+
+
 def _resolve_runtime_from_pool_entry(
     *,
     provider: str,
@@ -400,6 +420,9 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
                         "api_key": resolved_api_key,
                         "model": entry.get("default_model", ""),
                     }
+                    headers = _coerce_default_headers(entry.get("headers"))
+                    if headers:
+                        result["default_headers"] = headers
                     # The v11→v12 migration writes the API mode under the new
                     # ``transport`` field, but hand-edited configs may still
                     # use the legacy ``api_mode`` spelling.  Accept both —
@@ -425,6 +448,9 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
                             "api_key": resolved_api_key,
                             "model": entry.get("default_model", ""),
                         }
+                        headers = _coerce_default_headers(entry.get("headers"))
+                        if headers:
+                            result["default_headers"] = headers
                         api_mode = _parse_api_mode(entry.get("api_mode") or entry.get("transport"))
                         if api_mode:
                             result["api_mode"] = api_mode
@@ -463,6 +489,9 @@ def _get_named_custom_provider(requested_provider: str) -> Optional[Dict[str, An
             "base_url": base_url.strip(),
             "api_key": str(entry.get("api_key", "") or "").strip(),
         }
+        headers = _coerce_default_headers(entry.get("headers"))
+        if headers:
+            result["default_headers"] = headers
         key_env = str(entry.get("key_env", "") or "").strip()
         if key_env:
             result["key_env"] = key_env
@@ -528,6 +557,10 @@ def _resolve_named_custom_runtime(
         model_name = custom_provider.get("model")
         if model_name:
             pool_result["model"] = model_name
+        model_cfg = _get_model_config()
+        headers = _merge_default_headers(custom_provider.get("default_headers"), model_cfg.get("headers"))
+        if headers:
+            pool_result["default_headers"] = headers
         return pool_result
 
     api_key_candidates = [
@@ -552,6 +585,10 @@ def _resolve_named_custom_runtime(
     # provider name differs from the actual model string the API expects.
     if custom_provider.get("model"):
         result["model"] = custom_provider["model"]
+    model_cfg = _get_model_config()
+    headers = _merge_default_headers(custom_provider.get("default_headers"), model_cfg.get("headers"))
+    if headers:
+        result["default_headers"] = headers
     return result
 
 
@@ -649,7 +686,7 @@ def _resolve_openrouter_runtime(
     if effective_provider == "custom" and not api_key and not _is_openrouter_url:
         api_key = "no-key-required"
 
-    return {
+    runtime = {
         "provider": effective_provider,
         "api_mode": _parse_api_mode(model_cfg.get("api_mode"))
         or _detect_api_mode_for_url(base_url)
@@ -658,6 +695,10 @@ def _resolve_openrouter_runtime(
         "api_key": api_key,
         "source": source,
     }
+    headers = _merge_default_headers(model_cfg.get("headers"))
+    if headers:
+        runtime["default_headers"] = headers
+    return runtime
 
 
 def _resolve_azure_foundry_runtime(

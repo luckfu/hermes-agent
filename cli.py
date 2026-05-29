@@ -3435,6 +3435,7 @@ class HermesCLI:
         resolved_acp_command = runtime.get("command")
         resolved_acp_args = list(runtime.get("args") or [])
         resolved_credential_pool = runtime.get("credential_pool")
+        resolved_default_headers = runtime.get("default_headers") if isinstance(runtime.get("default_headers"), dict) else {}
         if not isinstance(api_key, str) or not api_key:
             # Custom / local endpoints (llama.cpp, ollama, vLLM, etc.) often
             # don't require authentication.  When a base_url IS configured but
@@ -3459,6 +3460,7 @@ class HermesCLI:
             return False
 
         credentials_changed = api_key != self.api_key or base_url != self.base_url
+        headers_changed = resolved_default_headers != getattr(self, "_default_headers", {})
         routing_changed = (
             resolved_provider != self.provider
             or resolved_api_mode != self.api_mode
@@ -3470,6 +3472,7 @@ class HermesCLI:
         self.acp_command = resolved_acp_command
         self.acp_args = resolved_acp_args
         self._credential_pool = resolved_credential_pool
+        self._default_headers = dict(resolved_default_headers)
         self._provider_source = runtime.get("source")
         self.api_key = api_key
         self.base_url = base_url
@@ -3512,7 +3515,7 @@ class HermesCLI:
 
         # AIAgent/OpenAI client holds auth at init time, so rebuild if key,
         # routing, or the effective model changed.
-        if (credentials_changed or routing_changed or model_changed) and self.agent is not None:
+        if (credentials_changed or routing_changed or headers_changed or model_changed) and self.agent is not None:
             self.agent = None
             self._active_agent_route_signature = None
 
@@ -3536,6 +3539,7 @@ class HermesCLI:
             "command": self.acp_command,
             "args": list(self.acp_args or []),
             "credential_pool": getattr(self, "_credential_pool", None),
+            "default_headers": dict(getattr(self, "_default_headers", {}) or {}),
         }
         route = {
             "model": self.model,
@@ -3547,6 +3551,7 @@ class HermesCLI:
                 runtime["api_mode"],
                 runtime["command"],
                 tuple(runtime["args"]),
+                tuple(sorted((runtime.get("default_headers") or {}).items())),
             ),
         }
 
@@ -3648,6 +3653,7 @@ class HermesCLI:
                 "command": self.acp_command,
                 "args": list(self.acp_args or []),
                 "credential_pool": getattr(self, "_credential_pool", None),
+                "default_headers": dict(getattr(self, "_default_headers", {}) or {}),
             }
             effective_model = model_override or self.model
             self.agent = AIAgent(
@@ -3659,6 +3665,7 @@ class HermesCLI:
                 acp_command=runtime.get("command"),
                 acp_args=runtime.get("args"),
                 credential_pool=runtime.get("credential_pool"),
+                default_headers=runtime.get("default_headers"),
                 max_iterations=self.max_turns,
                 enabled_toolsets=self.enabled_toolsets,
                 disabled_toolsets=self.disabled_toolsets,
@@ -6828,6 +6835,7 @@ class HermesCLI:
                     api_mode=turn_route["runtime"].get("api_mode"),
                     acp_command=turn_route["runtime"].get("command"),
                     acp_args=turn_route["runtime"].get("args"),
+                    default_headers=turn_route["runtime"].get("default_headers"),
                     max_iterations=self.max_turns,
                     enabled_toolsets=self.enabled_toolsets,
                     quiet_mode=True,
